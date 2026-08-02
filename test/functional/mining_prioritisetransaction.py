@@ -7,6 +7,7 @@
 from decimal import Decimal
 import time
 
+from test_framework.blocktools import NORMAL_GBT_REQUEST_PARAMS
 from test_framework.messages import (
     COIN,
     MAX_BLOCK_WEIGHT,
@@ -35,6 +36,57 @@ class PrioritiseTransactionTest(BitcoinTestFramework):
             delta = info["fee_delta"]
             node.prioritisetransaction(txid, 0, -delta)
         assert_equal(node.getprioritisedtransactions(), {})
+
+    def test_large_fee_bump(self):
+        self.log.info("Test that a large fee delta is honoured")
+        tx = self.wallet.create_self_transfer()
+        txid = tx["txid"]
+        fee_delta = int(86 * COIN)  # large enough to not fit into (u)int32_t
+        self.nodes[0].prioritisetransaction(txid=txid, fee_delta=fee_delta)
+        assert_equal(
+            self.nodes[0].getprioritisedtransactions(),
+            {
+                txid: {
+                    "fee_delta": fee_delta,
+                    "in_mempool": False,
+                },
+            },
+        )
+        self.nodes[0].sendrawtransaction(tx["hex"])
+        expected_modified_fee = tx["fee"] + Decimal(fee_delta) / COIN
+        assert_equal(
+            self.nodes[0].getprioritisedtransactions(),
+            {
+                txid: {
+                    "fee_delta": fee_delta,
+                    "in_mempool": True,
+                    "modified_fee": int(expected_modified_fee * COIN),
+                },
+            },
+        )
+        # This transaction forms its own chunk.
+        mempool_entry = self.nodes[0].getrawmempool(verbose=True)[txid]
+        assert_equal(mempool_entry["fees"]["base"], tx["fee"])
+        assert_equal(mempool_entry["fees"]["modified"], expected_modified_fee)
+        assert_equal(mempool_entry["fees"]["ancestor"], expected_modified_fee)
+        assert_equal(mempool_entry["fees"]["descendant"], expected_modified_fee)
+        assert_equal(mempool_entry["fees"]["chunk"], expected_modified_fee)
+        assert_equal(mempool_entry["chunkweight"], mempool_entry["weight"])
+        append_chunk_info = self.nodes[0].getmempoolcluster(txid)
+        assert_equal(
+            append_chunk_info,
+            {
+                "clusterweight": mempool_entry["weight"],
+                "txcount": 1,
+                "chunks": [{
+                    "chunkfee": expected_modified_fee,
+                    "chunkweight": mempool_entry["weight"],
+                    "txs": [txid],
+                }],
+            },
+        )
+        self.generate(self.nodes[0], 1)
+        assert_equal(self.nodes[0].getprioritisedtransactions(), {})
 
     def test_replacement(self):
         self.log.info("Test tx prioritisation stays after a tx is replaced")
@@ -175,6 +227,7 @@ class PrioritiseTransactionTest(BitcoinTestFramework):
         # Test `prioritisetransaction` invalid `fee_delta`
         assert_raises_rpc_error(-3, "JSON value of type string is not of expected type number", self.nodes[0].prioritisetransaction, txid=txid, fee_delta='foo')
 
+        self.test_large_fee_bump()
         self.test_replacement()
         self.test_diamond()
 
@@ -300,14 +353,14 @@ class PrioritiseTransactionTest(BitcoinTestFramework):
         # getblocktemplate to (eventually) return a new block.
         mock_time = int(time.time())
         self.nodes[0].setmocktime(mock_time)
-        template = self.nodes[0].getblocktemplate({'rules': ['segwit']})
+        template = self.nodes[0].getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)
         self.nodes[0].prioritisetransaction(txid=tx_id, fee_delta=-int(self.relayfee*COIN))
 
         # Calling prioritisetransaction with the inverse amount should delete its prioritisation entry
         assert tx_id not in self.nodes[0].getprioritisedtransactions()
 
         self.nodes[0].setmocktime(mock_time+10)
-        new_template = self.nodes[0].getblocktemplate({'rules': ['segwit']})
+        new_template = self.nodes[0].getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)
 
         assert_not_equal(template, new_template)
 

@@ -15,6 +15,7 @@
 #include <rpc/util.h>
 #include <txmempool.h>
 #include <univalue.h>
+#include <util/fees.h>
 #include <validationinterface.h>
 
 #include <algorithm>
@@ -28,9 +29,9 @@ using common::FeeModesDetail;
 using common::InvalidEstimateModeErrorMessage;
 using node::NodeContext;
 
-static RPCHelpMan estimatesmartfee()
+static RPCMethod estimatesmartfee()
 {
-    return RPCHelpMan{
+    return RPCMethod{
         "estimatesmartfee",
         "Estimates the approximate fee per kilobyte needed for a transaction to begin\n"
         "confirmation within conf_target blocks if possible and return the number of blocks\n"
@@ -59,7 +60,7 @@ static RPCHelpMan estimatesmartfee()
             HelpExampleCli("estimatesmartfee", "6") +
             HelpExampleRpc("estimatesmartfee", "6")
         },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
         {
             CBlockPolicyEstimator& fee_estimator = EnsureAnyFeeEstimator(request.context);
             const NodeContext& node = EnsureAnyNodeContext(request.context);
@@ -93,9 +94,38 @@ static RPCHelpMan estimatesmartfee()
     };
 }
 
-static RPCHelpMan estimaterawfee()
+static std::vector<RPCResult> FeeRateBucketDoc(bool elide = false)
 {
-    return RPCHelpMan{
+    auto fields = std::vector<RPCResult>{
+        {RPCResult::Type::NUM, "startrange", "start of feerate range"},
+        {RPCResult::Type::NUM, "endrange", "end of feerate range"},
+        {RPCResult::Type::NUM, "withintarget", "number of txs over history horizon in the feerate range that were confirmed within target"},
+        {RPCResult::Type::NUM, "totalconfirmed", "number of txs over history horizon in the feerate range that were confirmed at any point"},
+        {RPCResult::Type::NUM, "inmempool", "current number of txs in mempool in the feerate range unconfirmed for at least target blocks"},
+        {RPCResult::Type::NUM, "leftmempool", "number of txs over history horizon in the feerate range that left mempool unconfirmed after target"},
+    };
+    return elide ? ElideGroup(std::move(fields)) : fields;
+}
+
+static std::vector<RPCResult> FeeEstimateHorizonDoc(bool elide = false)
+{
+    auto fields = std::vector<RPCResult>{
+        {RPCResult::Type::NUM, "feerate", /*optional=*/true, "estimate fee rate in " + CURRENCY_UNIT + "/kvB"},
+        {RPCResult::Type::NUM, "decay", "exponential decay (per block) for historical moving average of confirmation data"},
+        {RPCResult::Type::NUM, "scale", "The resolution of confirmation targets at this time horizon"},
+        {RPCResult::Type::OBJ, "pass", /*optional=*/true, "information about the lowest range of feerates to succeed in meeting the threshold", FeeRateBucketDoc()},
+        {RPCResult::Type::OBJ, "fail", /*optional=*/true, "information about the highest range of feerates to fail to meet the threshold", FeeRateBucketDoc(/*elide=*/true)},
+        {RPCResult::Type::ARR, "errors", /*optional=*/true, "Errors encountered during processing (if there are any)",
+        {
+            {RPCResult::Type::STR, "error", ""},
+        }},
+    };
+    return elide ? ElideGroup(std::move(fields)) : fields;
+}
+
+static RPCMethod estimaterawfee()
+{
+    return RPCMethod{
         "estimaterawfee",
         "WARNING: This interface is unstable and may disappear or change!\n"
         "\nWARNING: This is an advanced API call that is tightly coupled to the specific\n"
@@ -114,41 +144,16 @@ static RPCHelpMan estimaterawfee()
             RPCResult::Type::OBJ, "", "Results are returned for any horizon which tracks blocks up to the confirmation target",
             {
                 {RPCResult::Type::OBJ, "short", /*optional=*/true, "estimate for short time horizon",
-                    {
-                        {RPCResult::Type::NUM, "feerate", /*optional=*/true, "estimate fee rate in " + CURRENCY_UNIT + "/kvB"},
-                        {RPCResult::Type::NUM, "decay", "exponential decay (per block) for historical moving average of confirmation data"},
-                        {RPCResult::Type::NUM, "scale", "The resolution of confirmation targets at this time horizon"},
-                        {RPCResult::Type::OBJ, "pass", /*optional=*/true, "information about the lowest range of feerates to succeed in meeting the threshold",
-                        {
-                                {RPCResult::Type::NUM, "startrange", "start of feerate range"},
-                                {RPCResult::Type::NUM, "endrange", "end of feerate range"},
-                                {RPCResult::Type::NUM, "withintarget", "number of txs over history horizon in the feerate range that were confirmed within target"},
-                                {RPCResult::Type::NUM, "totalconfirmed", "number of txs over history horizon in the feerate range that were confirmed at any point"},
-                                {RPCResult::Type::NUM, "inmempool", "current number of txs in mempool in the feerate range unconfirmed for at least target blocks"},
-                                {RPCResult::Type::NUM, "leftmempool", "number of txs over history horizon in the feerate range that left mempool unconfirmed after target"},
-                        }},
-                        {RPCResult::Type::OBJ, "fail", /*optional=*/true, "information about the highest range of feerates to fail to meet the threshold",
-                        {
-                            {RPCResult::Type::ELISION, "", ""},
-                        }},
-                        {RPCResult::Type::ARR, "errors", /*optional=*/true, "Errors encountered during processing (if there are any)",
-                        {
-                            {RPCResult::Type::STR, "error", ""},
-                        }},
-                }},
+                    FeeEstimateHorizonDoc()},
                 {RPCResult::Type::OBJ, "medium", /*optional=*/true, "estimate for medium time horizon",
-                {
-                    {RPCResult::Type::ELISION, "", ""},
-                }},
+                    FeeEstimateHorizonDoc(/*elide=*/true)},
                 {RPCResult::Type::OBJ, "long", /*optional=*/true, "estimate for long time horizon",
-                {
-                    {RPCResult::Type::ELISION, "", ""},
-                }},
+                    FeeEstimateHorizonDoc(/*elide=*/true)},
             }},
         RPCExamples{
             HelpExampleCli("estimaterawfee", "6 0.9")
         },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
         {
             CBlockPolicyEstimator& fee_estimator = EnsureAnyFeeEstimator(request.context);
             const NodeContext& node = EnsureAnyNodeContext(request.context);

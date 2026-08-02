@@ -7,7 +7,7 @@
 
 #include <common/system.h>
 
-#include <logging.h>
+#include <util/log.h>
 #include <util/string.h>
 #include <util/time.h>
 
@@ -36,9 +36,6 @@
 #include <thread>
 
 using util::ReplaceAll;
-
-// Application startup time (used for uptime calculation)
-const int64_t nStartupTime = GetTime();
 
 #ifndef WIN32
 std::string ShellEscape(const std::string& arg)
@@ -130,8 +127,8 @@ std::optional<size_t> GetTotalRAM()
     return std::nullopt;
 }
 
-// Obtain the application startup time (used for uptime calculation)
-int64_t GetStartupTime()
-{
-    return nStartupTime;
-}
+namespace {
+    const auto g_startup_time{SteadyClock::now()};
+} // namespace
+
+SteadyClock::duration GetUptime() { return SteadyClock::now() - g_startup_time; }

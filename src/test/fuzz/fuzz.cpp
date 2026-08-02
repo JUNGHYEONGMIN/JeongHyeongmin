@@ -37,8 +37,6 @@
 __AFL_FUZZ_INIT();
 #endif
 
-const std::function<void(const std::string&)> G_TEST_LOG_FUN{};
-
 /**
  * A copy of the command line arguments that start with `--`.
  * First `LLVMFuzzerInitialize()` is called, which saves the arguments to `g_args`.
@@ -233,7 +231,7 @@ int main(int argc, char** argv)
     // Enable AFL persistent mode. Requires compilation using afl-clang-fast++.
     // See fuzzing.md for details.
     const uint8_t* buffer = __AFL_FUZZ_TESTCASE_BUF;
-    while (__AFL_LOOP(100000)) {
+    while (__AFL_LOOP(100'000)) {
         size_t buffer_len = __AFL_FUZZ_TESTCASE_LEN;
         test_one_input({buffer, buffer_len});
     }

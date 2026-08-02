@@ -4,9 +4,11 @@
 
 #include <init.h>
 #include <interfaces/init.h>
+#include <logging.h>
 #include <rpc/server.h>
 
 #include <boost/test/unit_test.hpp>
+#include <test/util/common.h>
 #include <test/util/setup_common.h>
 
 using node::NodeContext;

@@ -5,6 +5,9 @@
 
 #include <bitcoin-build-config.h> // IWYU pragma: keep
 
+#include <wallet/rpc/wallet.h>
+
+#include <coins.h>
 #include <core_io.h>
 #include <key_io.h>
 #include <rpc/server.h>
@@ -12,9 +15,9 @@
 #include <univalue.h>
 #include <util/translation.h>
 #include <wallet/context.h>
+#include <wallet/export.h>
 #include <wallet/receive.h>
 #include <wallet/rpc/util.h>
-#include <wallet/rpc/wallet.h>
 #include <wallet/wallet.h>
 #include <wallet/walletutil.h>
 
@@ -31,9 +34,9 @@ static const std::map<uint64_t, std::string> WALLET_FLAG_CAVEATS{
      "be considered unused, even if the opposite is the case."},
 };
 
-static RPCHelpMan getwalletinfo()
+static RPCMethod getwalletinfo()
 {
-    return RPCHelpMan{"getwalletinfo",
+    return RPCMethod{"getwalletinfo",
                 "Returns an object containing various wallet state info.\n",
                 {},
                 RPCResult{
@@ -47,14 +50,13 @@ static RPCHelpMan getwalletinfo()
                         {RPCResult::Type::NUM, "keypoolsize", "how many new keys are pre-generated (only counts external keys)"},
                         {RPCResult::Type::NUM, "keypoolsize_hd_internal", /*optional=*/true, "how many new keys are pre-generated for internal use (used for change outputs, only appears if the wallet is using this feature, otherwise external keys are used)"},
                         {RPCResult::Type::NUM_TIME, "unlocked_until", /*optional=*/true, "the " + UNIX_EPOCH_TIME + " until which the wallet is unlocked for transfers, or 0 if the wallet is locked (only present for passphrase-encrypted wallets)"},
-                        {RPCResult::Type::STR_AMOUNT, "paytxfee", "the transaction fee configuration, set in " + CURRENCY_UNIT + "/kvB"},
                         {RPCResult::Type::BOOL, "private_keys_enabled", "false if privatekeys are disabled for this wallet (enforced watch-only wallet)"},
                         {RPCResult::Type::BOOL, "avoid_reuse", "whether this wallet tracks clean/dirty coins in terms of reuse"},
                         {RPCResult::Type::OBJ, "scanning", "current scanning details, or false if no scan is in progress",
                         {
                             {RPCResult::Type::NUM, "duration", "elapsed seconds since scan start"},
                             {RPCResult::Type::NUM, "progress", "scanning progress percentage [0.0, 1.0]"},
-                        }, /*skip_type_check=*/true},
+                        }, {.skip_type_check=true}, },
                         {RPCResult::Type::BOOL, "descriptors", "whether this wallet uses descriptors for output script management"},
                         {RPCResult::Type::BOOL, "external_signer", "whether this wallet is configured to use an external signer such as a hardware wallet"},
                         {RPCResult::Type::BOOL, "blank", "Whether this wallet intentionally does not contain any keys, scripts, or descriptors"},
@@ -70,7 +72,7 @@ static RPCHelpMan getwalletinfo()
                     HelpExampleCli("getwalletinfo", "")
             + HelpExampleRpc("getwalletinfo", "")
                 },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
 {
     const std::shared_ptr<const CWallet> pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
@@ -96,7 +98,6 @@ static RPCHelpMan getwalletinfo()
     if (pwallet->HasEncryptionKeys()) {
         obj.pushKV("unlocked_until", pwallet->nRelockTime);
     }
-    obj.pushKV("paytxfee", ValueFromAmount(pwallet->m_pay_tx_fee.GetFeePerK()));
     obj.pushKV("private_keys_enabled", !pwallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS));
     obj.pushKV("avoid_reuse", pwallet->IsWalletFlagSet(WALLET_FLAG_AVOID_REUSE));
     if (pwallet->IsScanning()) {
@@ -135,9 +136,9 @@ static RPCHelpMan getwalletinfo()
     };
 }
 
-static RPCHelpMan listwalletdir()
+static RPCMethod listwalletdir()
 {
-    return RPCHelpMan{"listwalletdir",
+    return RPCMethod{"listwalletdir",
                 "Returns a list of wallets in the wallet directory.\n",
                 {},
                 RPCResult{
@@ -160,7 +161,7 @@ static RPCHelpMan listwalletdir()
                     HelpExampleCli("listwalletdir", "")
             + HelpExampleRpc("listwalletdir", "")
                 },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
 {
     UniValue wallets(UniValue::VARR);
     for (const auto& [path, db_type] : ListDatabases(GetWalletDir())) {
@@ -181,9 +182,9 @@ static RPCHelpMan listwalletdir()
     };
 }
 
-static RPCHelpMan listwallets()
+static RPCMethod listwallets()
 {
-    return RPCHelpMan{"listwallets",
+    return RPCMethod{"listwallets",
                 "Returns a list of currently loaded wallets.\n"
                 "For full information on the wallet, use \"getwalletinfo\"\n",
                 {},
@@ -197,7 +198,7 @@ static RPCHelpMan listwallets()
                     HelpExampleCli("listwallets", "")
             + HelpExampleRpc("listwallets", "")
                 },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
 {
     UniValue obj(UniValue::VARR);
 
@@ -212,9 +213,9 @@ static RPCHelpMan listwallets()
     };
 }
 
-static RPCHelpMan loadwallet()
+static RPCMethod loadwallet()
 {
-    return RPCHelpMan{
+    return RPCMethod{
         "loadwallet",
         "Loads a wallet from a wallet file or directory."
                 "\nNote that all wallet command-line options used when starting bitcoind will be"
@@ -244,7 +245,7 @@ static RPCHelpMan loadwallet()
                     + HelpExampleCli("loadwallet", "\"DriveLetter:\\path\\to\\walletname\\\"")
                     + HelpExampleRpc("loadwallet", "\"DriveLetter:\\path\\to\\walletname\\\"")
                 },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
 {
     WalletContext& context = EnsureWalletContext(request.context);
     const std::string name(request.params[0].get_str());
@@ -277,14 +278,14 @@ static RPCHelpMan loadwallet()
     };
 }
 
-static RPCHelpMan setwalletflag()
+static RPCMethod setwalletflag()
 {
             std::string flags;
             for (auto& it : STRING_TO_WALLET_FLAG)
                 if (it.second & MUTABLE_WALLET_FLAGS)
                     flags += (flags == "" ? "" : ", ") + it.first;
 
-    return RPCHelpMan{
+    return RPCMethod{
         "setwalletflag",
         "Change the state of the given wallet flag for a wallet.\n",
                 {
@@ -303,7 +304,7 @@ static RPCHelpMan setwalletflag()
                     HelpExampleCli("setwalletflag", "avoid_reuse")
                   + HelpExampleRpc("setwalletflag", "\"avoid_reuse\"")
                 },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
 {
     std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
     if (!pwallet) return UniValue::VNULL;
@@ -345,9 +346,9 @@ static RPCHelpMan setwalletflag()
     };
 }
 
-static RPCHelpMan createwallet()
+static RPCMethod createwallet()
 {
-    return RPCHelpMan{
+    return RPCMethod{
         "createwallet",
         "Creates and loads a new wallet.\n",
         {
@@ -376,7 +377,7 @@ static RPCHelpMan createwallet()
             + HelpExampleCliNamed("createwallet", {{"wallet_name", "descriptors"}, {"avoid_reuse", true}, {"load_on_startup", true}})
             + HelpExampleRpcNamed("createwallet", {{"wallet_name", "descriptors"}, {"avoid_reuse", true}, {"load_on_startup", true}})
         },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
 {
     WalletContext& context = EnsureWalletContext(request.context);
     uint64_t flags = 0;
@@ -422,10 +423,7 @@ static RPCHelpMan createwallet()
     bilingual_str error;
     std::optional<bool> load_on_start = request.params[6].isNull() ? std::nullopt : std::optional<bool>(request.params[6].get_bool());
     const std::shared_ptr<CWallet> wallet = CreateWallet(context, request.params[0].get_str(), load_on_start, options, status, error, warnings);
-    if (!wallet) {
-        RPCErrorCode code = status == DatabaseStatus::FAILED_ENCRYPT ? RPC_WALLET_ENCRYPTION_FAILED : RPC_WALLET_ERROR;
-        throw JSONRPCError(code, error.original);
-    }
+    HandleWalletError(wallet, status, error);
 
     UniValue obj(UniValue::VOBJ);
     obj.pushKV("name", wallet->GetName());
@@ -436,9 +434,9 @@ static RPCHelpMan createwallet()
     };
 }
 
-static RPCHelpMan unloadwallet()
+static RPCMethod unloadwallet()
 {
-    return RPCHelpMan{"unloadwallet",
+    return RPCMethod{"unloadwallet",
                 "Unloads the wallet referenced by the request endpoint or the wallet_name argument.\n"
                 "If both are specified, they must be identical.",
                 {
@@ -455,7 +453,7 @@ static RPCHelpMan unloadwallet()
                     HelpExampleCli("unloadwallet", "wallet_name")
             + HelpExampleRpc("unloadwallet", "wallet_name")
                 },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
 {
     const std::string wallet_name{EnsureUniqueWalletName(request, self.MaybeArg<std::string_view>("wallet_name"))};
 
@@ -491,9 +489,9 @@ static RPCHelpMan unloadwallet()
     };
 }
 
-RPCHelpMan simulaterawtransaction()
+RPCMethod simulaterawtransaction()
 {
-    return RPCHelpMan{
+    return RPCMethod{
         "simulaterawtransaction",
         "Calculate the balance change resulting in the signing and broadcasting of the given transaction(s).\n",
         {
@@ -518,7 +516,7 @@ RPCHelpMan simulaterawtransaction()
             HelpExampleCli("simulaterawtransaction", "[\"myhex\"]")
             + HelpExampleRpc("simulaterawtransaction", "[\"myhex\"]")
         },
-    [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+    [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
 {
     const std::shared_ptr<const CWallet> rpc_wallet = GetWalletForJSONRPCRequest(request);
     if (!rpc_wallet) return UniValue::VNULL;
@@ -533,7 +531,7 @@ RPCHelpMan simulaterawtransaction()
 
     for (size_t i = 0; i < txs.size(); ++i) {
         CMutableTransaction mtx;
-        if (!DecodeHexTx(mtx, txs[i].get_str(), /* try_no_witness */ true, /* try_witness */ true)) {
+        if (!DecodeHexTx(mtx, txs[i].get_str(), /*try_no_witness=*/ true, /*try_witness=*/ true)) {
             throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Transaction hex string decoding failure.");
         }
 
@@ -584,9 +582,9 @@ RPCHelpMan simulaterawtransaction()
     };
 }
 
-static RPCHelpMan migratewallet()
+static RPCMethod migratewallet()
 {
-    return RPCHelpMan{
+    return RPCMethod{
         "migratewallet",
         "Migrate the wallet to a descriptor wallet.\n"
         "A new wallet backup will need to be made.\n"
@@ -598,6 +596,7 @@ static RPCHelpMan migratewallet()
         {
             {"wallet_name", RPCArg::Type::STR, RPCArg::DefaultHint{"the wallet name from the RPC endpoint"}, "The name of the wallet to migrate. If provided both here and in the RPC endpoint, the two must be identical."},
             {"passphrase", RPCArg::Type::STR, RPCArg::Optional::OMITTED, "The wallet passphrase"},
+            {"load_wallet", RPCArg::Type::BOOL, RPCArg::Default{true}, "Load the wallet after migration."},
         },
         RPCResult{
             RPCResult::Type::OBJ, "", "",
@@ -612,7 +611,7 @@ static RPCHelpMan migratewallet()
             HelpExampleCli("migratewallet", "")
             + HelpExampleRpc("migratewallet", "")
         },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
         {
             const std::string wallet_name{EnsureUniqueWalletName(request, self.MaybeArg<std::string_view>("wallet_name"))};
 
@@ -622,19 +621,21 @@ static RPCHelpMan migratewallet()
                 wallet_pass = std::string_view{request.params[1].get_str()};
             }
 
+            const bool loadwallet = self.Arg<bool>("load_wallet");
+
             WalletContext& context = EnsureWalletContext(request.context);
-            util::Result<MigrationResult> res = MigrateLegacyToDescriptor(wallet_name, wallet_pass, context);
+            util::Result<MigrationResult> res = MigrateLegacyToDescriptor(wallet_name, wallet_pass, context, loadwallet);
             if (!res) {
                 throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(res).original);
             }
 
             UniValue r{UniValue::VOBJ};
             r.pushKV("wallet_name", res->wallet_name);
-            if (res->watchonly_wallet) {
-                r.pushKV("watchonly_name", res->watchonly_wallet->GetName());
+            if (res->watchonly_wallet_name.has_value()) {
+                r.pushKV("watchonly_name", res->watchonly_wallet_name.value());
             }
-            if (res->solvables_wallet) {
-                r.pushKV("solvables_name", res->solvables_wallet->GetName());
+            if (res->solvables_wallet_name.has_value()) {
+                r.pushKV("solvables_name", res->solvables_wallet_name.value());
             }
             r.pushKV("backup_path", res->backup_path.utf8string());
 
@@ -643,9 +644,9 @@ static RPCHelpMan migratewallet()
     };
 }
 
-RPCHelpMan gethdkeys()
+RPCMethod gethdkeys()
 {
-    return RPCHelpMan{
+    return RPCMethod{
         "gethdkeys",
         "List all BIP 32 HD keys in the wallet and which descriptors use them.\n",
         {
@@ -663,7 +664,7 @@ RPCHelpMan gethdkeys()
                     {RPCResult::Type::ARR, "descriptors", "Array of descriptor objects that use this HD key",
                     {
                         {RPCResult::Type::OBJ, "", "", {
-                            {RPCResult::Type::STR, "desc", "Descriptor string representation"},
+                            {RPCResult::Type::STR, "desc", "Descriptor string public representation"},
                             {RPCResult::Type::BOOL, "active", "Whether this descriptor is currently used to generate new addresses"},
                         }},
                     }},
@@ -674,7 +675,7 @@ RPCHelpMan gethdkeys()
             HelpExampleCli("gethdkeys", "") + HelpExampleRpc("gethdkeys", "")
             + HelpExampleCliNamed("gethdkeys", {{"active_only", "true"}, {"private", "true"}}) + HelpExampleRpcNamed("gethdkeys", {{"active_only", "true"}, {"private", "true"}})
         },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
         {
             const std::shared_ptr<const CWallet> wallet = GetWalletForJSONRPCRequest(request);
             if (!wallet) return UniValue::VNULL;
@@ -710,7 +711,7 @@ RPCHelpMan gethdkeys()
                 w_desc.descriptor->GetPubKeys(desc_pubkeys, desc_xpubs);
                 for (const CExtPubKey& xpub : desc_xpubs) {
                     std::string desc_str;
-                    bool ok = desc_spkm->GetDescriptorString(desc_str, false);
+                    bool ok = desc_spkm->GetDescriptorString(desc_str, /*priv=*/false);
                     CHECK_NONFATAL(ok);
                     wallet_xpubs[xpub].emplace(desc_str, wallet->IsActiveScriptPubKeyMan(*spkm), desc_spkm->HasPrivKey(xpub.pubkey.GetID()));
                     if (std::optional<CKey> key = priv ? desc_spkm->GetKey(xpub.pubkey.GetID()) : std::nullopt) {
@@ -734,7 +735,7 @@ RPCHelpMan gethdkeys()
                 UniValue xpub_info(UniValue::VOBJ);
                 xpub_info.pushKV("xpub", EncodeExtPubKey(xpub));
                 xpub_info.pushKV("has_private", has_xprv);
-                if (priv) {
+                if (priv && has_xprv) {
                     xpub_info.pushKV("xprv", EncodeExtKey(wallet_xprvs.at(xpub)));
                 }
                 xpub_info.pushKV("descriptors", std::move(descriptors));
@@ -747,9 +748,9 @@ RPCHelpMan gethdkeys()
     };
 }
 
-static RPCHelpMan createwalletdescriptor()
+static RPCMethod createwalletdescriptor()
 {
-    return RPCHelpMan{"createwalletdescriptor",
+    return RPCMethod{"createwalletdescriptor",
         "Creates the wallet's descriptor for the given address type. "
         "The address type must be one that the wallet does not already have a descriptor for."
         + HELP_REQUIRING_PASSPHRASE,
@@ -772,7 +773,7 @@ static RPCHelpMan createwalletdescriptor()
             HelpExampleCli("createwalletdescriptor", "bech32m")
             + HelpExampleRpc("createwalletdescriptor", "bech32m")
         },
-        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        [](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
         {
             std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
             if (!pwallet) return UniValue::VNULL;
@@ -845,67 +846,185 @@ static RPCHelpMan createwalletdescriptor()
     };
 }
 
+RPCMethod addhdkey()
+{
+    return RPCMethod{
+        "addhdkey",
+        "Add a BIP 32 HD key to the wallet that can be used with 'createwalletdescriptor'\n",
+        {
+            {"hdkey", RPCArg::Type::STR, RPCArg::DefaultHint{"Automatically generated new key"}, "The BIP 32 extended private key to add. If none is provided, a randomly generated one will be added."},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "xpub", "The xpub of the HD key that was added to the wallet"}
+            },
+        },
+        RPCExamples{
+            HelpExampleCli("addhdkey", "xprv") + HelpExampleRpc("addhdkey", "xprv")
+        },
+        [&](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
+        {
+            std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
+            if (!wallet) return UniValue::VNULL;
+
+            if (wallet->IsWalletFlagSet(WALLET_FLAG_DISABLE_PRIVATE_KEYS)) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "addhdkey is not available for wallets without private keys");
+            }
+
+            EnsureWalletIsUnlocked(*wallet);
+
+            CExtKey hdkey;
+            if (request.params[0].isNull()) {
+                CKey seed_key = GenerateRandomKey();
+                hdkey.SetSeed(seed_key);
+            } else {
+                hdkey = DecodeExtKey(request.params[0].get_str());
+                if (!hdkey.key.IsValid()) {
+                    // Check if the user gave us an xpub and give a more descriptive error if so
+                    CExtPubKey xpub = DecodeExtPubKey(request.params[0].get_str());
+                    if (xpub.pubkey.IsValid()) {
+                        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Extended public key (xpub) provided, but extended private key (xprv) is required");
+                    } else {
+                        throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Could not parse HD key");
+                    }
+                }
+            }
+
+            LOCK(wallet->cs_wallet);
+            std::string desc_str = "unused(" + EncodeExtKey(hdkey) + ")";
+            FlatSigningProvider keys;
+            std::string error;
+            std::vector<std::unique_ptr<Descriptor>> descs = Parse(desc_str, keys, error, false);
+            CHECK_NONFATAL(!descs.empty());
+            WalletDescriptor w_desc(std::move(descs.at(0)), GetTime(), 0, 0, 0);
+            if (wallet->GetDescriptorScriptPubKeyMan(w_desc) != nullptr) {
+                throw JSONRPCError(RPC_WALLET_ERROR, "HD key already exists");
+            }
+
+            auto spkm = wallet->AddWalletDescriptor(w_desc, keys, /*label=*/"", /*internal=*/false);
+            if (!spkm) {
+                throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(spkm).original);
+            }
+
+            UniValue response(UniValue::VOBJ);
+            const DescriptorScriptPubKeyMan& desc_spkm = spkm->get();
+            LOCK(desc_spkm.cs_desc_man);
+            std::set<CPubKey> pubkeys;
+            std::set<CExtPubKey> extpubs;
+            desc_spkm.GetWalletDescriptor().descriptor->GetPubKeys(pubkeys, extpubs);
+            CHECK_NONFATAL(pubkeys.size() == 0);
+            CHECK_NONFATAL(extpubs.size() == 1);
+            response.pushKV("xpub", EncodeExtPubKey(*extpubs.begin()));
+
+            return response;
+        },
+    };
+}
+
+static RPCMethod exportwatchonlywallet()
+{
+    return RPCMethod{"exportwatchonlywallet",
+        "Creates a wallet file at the specified destination containing a watchonly version "
+        "of the current wallet. This watchonly wallet contains the wallet's public descriptors, "
+        "its transactions, and address book data. Descriptors that use hardened derivation will "
+        "only have a limited number of derived keys included in the export due to hardened "
+        "derivation requiring private keys. Descriptors with unhardened derivation do not have "
+        "this limitation. The watchonly wallet can be imported into another node using 'restorewallet'.",
+        {
+            {"destination", RPCArg::Type::STR, RPCArg::Optional::NO, "The path to the filename the exported watchonly wallet will be saved to"},
+        },
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::STR, "exported_file", "The full path that the file has been exported to"},
+            },
+        },
+        RPCExamples{
+            HelpExampleCli("exportwatchonlywallet", "\"/path/to/export.dat\"")
+            + HelpExampleRpc("exportwatchonlywallet", "\"/path/to/export.dat\"")
+        },
+        [&](const RPCMethod& self, const JSONRPCRequest& request) -> UniValue
+        {
+            std::shared_ptr<CWallet> const pwallet = GetWalletForJSONRPCRequest(request);
+            if (!pwallet) return UniValue::VNULL;
+            WalletContext& context = EnsureWalletContext(request.context);
+
+            std::string dest = request.params[0].get_str();
+
+            LOCK(pwallet->cs_wallet);
+            pwallet->TopUpKeyPool();
+            util::Result<std::string> exported = ExportWatchOnlyWallet(*pwallet, fs::PathFromString(dest), context);
+            if (!exported) {
+                throw JSONRPCError(RPC_WALLET_ERROR, util::ErrorString(exported).original);
+            }
+            UniValue out{UniValue::VOBJ};
+            out.pushKV("exported_file", *exported);
+            return out;
+        }
+    };
+}
+
 // addresses
-RPCHelpMan getaddressinfo();
-RPCHelpMan getnewaddress();
-RPCHelpMan getrawchangeaddress();
-RPCHelpMan setlabel();
-RPCHelpMan listaddressgroupings();
-RPCHelpMan keypoolrefill();
-RPCHelpMan getaddressesbylabel();
-RPCHelpMan listlabels();
+RPCMethod getaddressinfo();
+RPCMethod getnewaddress();
+RPCMethod getrawchangeaddress();
+RPCMethod setlabel();
+RPCMethod listaddressgroupings();
+RPCMethod keypoolrefill();
+RPCMethod getaddressesbylabel();
+RPCMethod listlabels();
 #ifdef ENABLE_EXTERNAL_SIGNER
-RPCHelpMan walletdisplayaddress();
+RPCMethod walletdisplayaddress();
 #endif // ENABLE_EXTERNAL_SIGNER
 
 // backup
-RPCHelpMan importprunedfunds();
-RPCHelpMan removeprunedfunds();
-RPCHelpMan importdescriptors();
-RPCHelpMan listdescriptors();
-RPCHelpMan backupwallet();
-RPCHelpMan restorewallet();
+RPCMethod importprunedfunds();
+RPCMethod removeprunedfunds();
+RPCMethod importdescriptors();
+RPCMethod listdescriptors();
+RPCMethod backupwallet();
+RPCMethod restorewallet();
 
 // coins
-RPCHelpMan getreceivedbyaddress();
-RPCHelpMan getreceivedbylabel();
-RPCHelpMan getbalance();
-RPCHelpMan lockunspent();
-RPCHelpMan listlockunspent();
-RPCHelpMan getbalances();
-RPCHelpMan listunspent();
+RPCMethod getreceivedbyaddress();
+RPCMethod getreceivedbylabel();
+RPCMethod getbalance();
+RPCMethod lockunspent();
+RPCMethod listlockunspent();
+RPCMethod getbalances();
+RPCMethod listunspent();
 
 // encryption
-RPCHelpMan walletpassphrase();
-RPCHelpMan walletpassphrasechange();
-RPCHelpMan walletlock();
-RPCHelpMan encryptwallet();
+RPCMethod walletpassphrase();
+RPCMethod walletpassphrasechange();
+RPCMethod walletlock();
+RPCMethod encryptwallet();
 
 // spend
-RPCHelpMan sendtoaddress();
-RPCHelpMan sendmany();
-RPCHelpMan settxfee();
-RPCHelpMan fundrawtransaction();
-RPCHelpMan bumpfee();
-RPCHelpMan psbtbumpfee();
-RPCHelpMan send();
-RPCHelpMan sendall();
-RPCHelpMan walletprocesspsbt();
-RPCHelpMan walletcreatefundedpsbt();
-RPCHelpMan signrawtransactionwithwallet();
+RPCMethod sendtoaddress();
+RPCMethod sendmany();
+RPCMethod fundrawtransaction();
+RPCMethod bumpfee();
+RPCMethod psbtbumpfee();
+RPCMethod send();
+RPCMethod sendall();
+RPCMethod walletprocesspsbt();
+RPCMethod walletcreatefundedpsbt();
+RPCMethod signrawtransactionwithwallet();
 
 // signmessage
-RPCHelpMan signmessage();
+RPCMethod signmessage();
 
 // transactions
-RPCHelpMan listreceivedbyaddress();
-RPCHelpMan listreceivedbylabel();
-RPCHelpMan listtransactions();
-RPCHelpMan listsinceblock();
-RPCHelpMan gettransaction();
-RPCHelpMan abandontransaction();
-RPCHelpMan rescanblockchain();
-RPCHelpMan abortrescan();
+RPCMethod listreceivedbyaddress();
+RPCMethod listreceivedbylabel();
+RPCMethod listtransactions();
+RPCMethod listsinceblock();
+RPCMethod gettransaction();
+RPCMethod abandontransaction();
+RPCMethod rescanblockchain();
+RPCMethod abortrescan();
 
 std::span<const CRPCCommand> GetWalletRPCCommands()
 {
@@ -913,6 +1032,7 @@ std::span<const CRPCCommand> GetWalletRPCCommands()
         {"rawtransactions", &fundrawtransaction},
         {"wallet", &abandontransaction},
         {"wallet", &abortrescan},
+        {"wallet", &addhdkey},
         {"wallet", &backupwallet},
         {"wallet", &bumpfee},
         {"wallet", &psbtbumpfee},
@@ -920,6 +1040,7 @@ std::span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &createwalletdescriptor},
         {"wallet", &restorewallet},
         {"wallet", &encryptwallet},
+        {"wallet", &exportwatchonlywallet},
         {"wallet", &getaddressesbylabel},
         {"wallet", &getaddressinfo},
         {"wallet", &getbalance},
@@ -954,7 +1075,6 @@ std::span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &sendmany},
         {"wallet", &sendtoaddress},
         {"wallet", &setlabel},
-        {"wallet", &settxfee},
         {"wallet", &setwalletflag},
         {"wallet", &signmessage},
         {"wallet", &signrawtransactionwithwallet},

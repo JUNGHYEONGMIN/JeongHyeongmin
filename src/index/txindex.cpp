@@ -10,7 +10,6 @@
 #include <index/base.h>
 #include <index/disktxpos.h>
 #include <interfaces/chain.h>
-#include <logging.h>
 #include <node/blockstorage.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
@@ -18,14 +17,13 @@
 #include <streams.h>
 #include <uint256.h>
 #include <util/fs.h>
+#include <util/log.h>
 #include <validation.h>
 
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <exception>
-#include <iterator>
-#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -68,7 +66,7 @@ void TxIndex::DB::WriteTxs(const std::vector<std::pair<Txid, CDiskTxPos>>& v_pos
 }
 
 TxIndex::TxIndex(std::unique_ptr<interfaces::Chain> chain, size_t n_cache_size, bool f_memory, bool f_wipe)
-    : BaseIndex(std::move(chain), "txindex"), m_db(std::make_unique<TxIndex::DB>(n_cache_size, f_memory, f_wipe))
+    : BaseIndex(std::move(chain), "txindex", "txidx"), m_db(std::make_unique<TxIndex::DB>(n_cache_size, f_memory, f_wipe))
 {}
 
 TxIndex::~TxIndex() = default;

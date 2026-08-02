@@ -15,6 +15,7 @@ add_executable(test_bitcoin
   base32_tests.cpp
   base58_tests.cpp
   base64_tests.cpp
+  baseindex_tests.cpp
   bech32_tests.cpp
   bip32_tests.cpp
   bip324_tests.cpp
@@ -25,6 +26,7 @@ add_executable(test_bitcoin
   blockmanager_tests.cpp
   bloom_tests.cpp
   bswap_tests.cpp
+  btcsignals_tests.cpp
   caches_tests.cpp
   chain_tests.cpp
   chainstate_write_tests.cpp
@@ -33,6 +35,7 @@ add_executable(test_bitcoin
   coins_tests.cpp
   coinscachepair_tests.cpp
   coinstatsindex_tests.cpp
+  coinsviewoverlay_tests.cpp
   common_url_tests.cpp
   compress_tests.cpp
   crypto_tests.cpp
@@ -62,6 +65,7 @@ add_executable(test_bitcoin
   miniscript_tests.cpp
   minisketch_tests.cpp
   multisig_tests.cpp
+  bip328_tests.cpp
   net_peer_connection_tests.cpp
   net_peer_eviction_tests.cpp
   net_tests.cpp
@@ -76,7 +80,8 @@ add_executable(test_bitcoin
   pool_tests.cpp
   pow_tests.cpp
   prevector_tests.cpp
-  raii_event_tests.cpp
+  private_broadcast_tests.cpp
+  psbt_tests.cpp
   random_tests.cpp
   rbf_tests.cpp
   rest_tests.cpp
@@ -105,6 +110,7 @@ add_executable(test_bitcoin
   system_ram_tests.cpp
   system_tests.cpp
   testnet4_miner_tests.cpp
+  threadpool_tests.cpp
   timeoffsets_tests.cpp
   torcontrol_tests.cpp
   transaction_tests.cpp
@@ -112,6 +118,7 @@ add_executable(test_bitcoin
   txdownload_tests.cpp
   txgraph_tests.cpp
   txindex_tests.cpp
+  txospenderindex_tests.cpp
   txpackage_tests.cpp
   txreconciliation_tests.cpp
   txrequest_tests.cpp
@@ -142,6 +149,7 @@ target_json_data_sources(test_bitcoin
   data/key_io_valid.json
   data/script_tests.json
   data/sighash.json
+  data/siphash.json
   data/tx_invalid.json
   data/tx_valid.json
 )
@@ -160,16 +168,8 @@ target_link_libraries(test_bitcoin
   minisketch
   secp256k1
   Boost::headers
-  libevent::extra
+  $<TARGET_NAME_IF_EXISTS:USDT::headers>
 )
-
-if(ENABLE_WALLET)
-  add_subdirectory(${PROJECT_SOURCE_DIR}/src/wallet/test wallet)
-endif()
-
-if(ENABLE_IPC)
-  add_subdirectory(${PROJECT_SOURCE_DIR}/src/ipc/test ipc)
-endif()
 
 function(add_boost_test source_file)
   if(NOT EXISTS ${source_file})
@@ -186,7 +186,7 @@ function(add_boost_test source_file)
   )
   foreach(test_suite_name IN LISTS test_suite_macro)
     add_test(NAME ${test_suite_name}
-      COMMAND test_bitcoin --run_test=${test_suite_name} --catch_system_error=no --log_level=test_suite -- DEBUG_LOG_OUT
+      COMMAND test_bitcoin --run_test=${test_suite_name} --catch_system_error=no --log_level=test_suite -- -printtoconsole=1
     )
     set_property(TEST ${test_suite_name} PROPERTY
       SKIP_REGULAR_EXPRESSION
@@ -208,6 +208,14 @@ function(add_all_test_targets)
     add_boost_test(${test_source})
   endforeach()
 endfunction()
+
+if(ENABLE_WALLET)
+  add_subdirectory(${PROJECT_SOURCE_DIR}/src/wallet/test wallet)
+endif()
+
+if(ENABLE_IPC)
+  add_subdirectory(${PROJECT_SOURCE_DIR}/src/ipc/test ipc)
+endif()
 
 add_all_test_targets()
 

@@ -53,6 +53,10 @@ To build dependencies for the current arch+OS:
 
     pkg_add bash cmake curl gmake gtar
 
+Skip the following packages if you don't intend to use the GUI and will build with [`NO_QT=1`](#dependency-options):
+
+    pkg_add bison ninja
+
 To build dependencies for the current arch+OS:
 
     gmake
@@ -90,7 +94,6 @@ The following can be set when running make: `make FOO=bar`
 - `C_STANDARD`: Set the C standard version used. Defaults to `c11`.
 - `CXX_STANDARD`: Set the C++ standard version used. Defaults to `c++20`.
 - `NO_BOOST`: Don't download/build/cache Boost
-- `NO_LIBEVENT`: Don't download/build/cache Libevent
 - `NO_QT`: Don't download/build/cache Qt and its dependencies
 - `NO_QR`: Don't download/build/cache packages needed for enabling qrencode
 - `NO_ZMQ`: Don't download/build/cache packages needed for enabling ZeroMQ
@@ -107,6 +110,18 @@ The following can be set when running make: `make FOO=bar`
 
 If some packages are not built, for example `make NO_WALLET=1`, the appropriate CMake cache
 variables will be set when generating the Bitcoin Core buildsystem. In this case, `-DENABLE_WALLET=OFF`.
+
+## Compiler Configuration
+
+`CC` and `CXX` control target compilers. `build_CC` and `build_CXX` control
+compilers for native build tools (e.g. `native_capnp`, `native_qt`), which
+default to `gcc`/`g++` on Linux and `clang`/`clang++` on macOS/FreeBSD/OpenBSD
+(see `./depends/builders/*.mk`).
+
+On a system where the default build compiler is not available (e.g. Linux
+without gcc/g++), you could use the following to build all packages using clang:
+
+    make -C depends build_CC=clang build_CXX=clang++ CC=clang CXX=clang++
 
 ## Cross compilation
 
